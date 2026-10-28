@@ -29,6 +29,7 @@ button{font:inherit;cursor:pointer;border:0;border-radius:10px;padding:11px 14px
 button.pri{background:var(--ac);color:var(--onac);width:100%;margin-top:14px}
 button:hover{filter:brightness(1.07)}button.lnk{background:none;color:var(--mu);padding:4px 8px;min-height:0;font-weight:500;font-size:12px}button.lnk:hover{color:var(--red)}
 .seg{display:flex;background:var(--card2);border-radius:10px;padding:3px}.seg button{flex:1;background:none;min-height:38px}.seg button.on{background:var(--card);box-shadow:0 1px 3px #0003}
+.split{display:flex;gap:10px;margin-top:10px}.split div{flex:1;background:var(--card2);border-radius:12px;padding:9px 12px}.split small{display:block;color:var(--mu);font-size:11px;text-transform:uppercase;letter-spacing:.05em}.split b{font-size:17px}
 .hint{font-size:12px;color:var(--ac);margin-top:6px;min-height:16px}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
 .chip{padding:6px 10px;min-height:0;font-size:12px;border-radius:99px;border:1px solid var(--bd);background:none;color:var(--mu)}.chip.on{background:var(--ac);color:var(--onac);border-color:var(--ac)}
@@ -55,19 +56,19 @@ dialog{border:1px solid var(--bd);border-radius:16px;background:var(--card);colo
 <header><div><h1>Balance Tracker</h1><div class="sub">Every transaction is categorized and grouped automatically.</div></div><span class="pill" id="sync">Local only</span></header>
 <div class="grid">
 <div class="col">
- <div class="card hero"><h2>Current balance</h2><div class="bal" id="bal">—</div><div class="stats" id="stats"></div>
-  <details style="margin-top:8px"><summary id="startSum">Set starting balance</summary><label>Starting balance (€)</label><input id="start" inputmode="decimal" placeholder="1000"><button class="pri" id="setStart" style="margin-top:10px">Save starting balance</button></details></div>
+ <div class="card hero"><h2>Current balance</h2><div class="bal" id="bal">—</div><div class="split" id="split"></div><div class="stats" id="stats"></div>
+  <details style="margin-top:8px"><summary id="startSum">Set starting balance</summary><div class="row"><div><label>💳 Card (€)</label><input id="startCard" inputmode="decimal" placeholder="0"></div><div><label>💵 Cash (€)</label><input id="startCash" inputmode="decimal" placeholder="0"></div></div><button class="pri" id="setStart" style="margin-top:10px">Save starting balance</button></details></div>
  <div class="card"><h2>New transaction</h2>
-  <div class="seg"><button id="mx" class="on">Expense</button><button id="mi">Income</button></div>
+  <div class="seg"><button id="mx" class="on">Expense</button><button id="mi">Income</button><button id="mt">Transfer</button></div>
   <div class="row"><div class="sm"><label>Amount (€)</label><input id="amt" inputmode="decimal" placeholder="0.00"></div><div><label>Description</label><input id="desc" placeholder="e.g. Lidl, Uber, Netflix" autocomplete="off"></div></div>
-  <label>Category</label><select id="cat"></select><div class="hint" id="hint"></div>
+  <div class="row"><div><label>Category</label><select id="cat"></select></div><div><label id="acl">Paid with</label><select id="acct"><option value="card">💳 Card</option><option value="cash">💵 Cash</option></select></div></div><div class="hint" id="hint"></div>
   <button class="pri" id="add">Add expense</button></div>
  <div class="card"><h2>Data</h2><div class="tools"><button id="exp">Export</button><button id="imp">Import</button><button id="theme">Theme</button></div><input type="file" id="file" accept=".json" hidden>
   <div class="sub" style="margin-top:8px" id="syncInfo"></div></div>
 </div>
 <div class="col">
  <div class="card"><h2>Spending groups</h2><div id="groups"></div>
-  <details id="gform"><summary>+ New group</summary><div class="row"><div><label>Group name</label><input id="gname" placeholder="Needs"></div><div class="sm"><label>% of start</label><input id="gpct" inputmode="decimal" placeholder="50"></div></div>
+  <details id="gform"><summary>+ New group</summary><div class="row"><div><label>Group name</label><input id="gname" placeholder="Needs"></div><div class="sm"><label>% of income</label><input id="gpct" inputmode="decimal" placeholder="50"></div></div>
    <label>Categories that count toward it</label><div class="chips" id="gcats"></div><button class="pri" id="gadd">Create group</button></details>
   <div class="sub" id="alloc" style="margin-top:8px"></div></div>
  <div class="card"><h2>Spending by category</h2><div id="breakdown"></div></div>
@@ -108,42 +109,49 @@ stamp();$("syncInfo").textContent="Data stays on this device. Export sends your 
 // ---------- logic ----------
 const keyOf=n=>n.trim().toLowerCase();
 function groupOf(t){if(t.type!=="out")return null;const byName=S.groups.find(g=>t.desc&&keyOf(g.name)===keyOf(t.desc));if(byName)return byName;return S.groups.find(g=>g.cats.includes(t.cat))||null}
-function balance(){return S.start==null?null:S.tx.reduce((b,t)=>b+(t.type==="in"?t.amount:-t.amount),S.start)}
+function accts(){if(S.start==null)return null;const B={cash:S.startCash||0,card:S.startCard!=null?S.startCard:S.start};
+ S.tx.forEach(t=>{const a=t.acct==="cash"?"cash":"card",o=a==="cash"?"card":"cash";if(t.type==="in")B[a]+=t.amount;else if(t.type==="out")B[a]-=t.amount;else{B[a]-=t.amount;B[o]+=t.amount}});return B}
+function balance(){const B=accts();return B?B.cash+B.card:null}
+const acl=t=>t.type==="tr"?(t.acct==="cash"?"💵 Cash → 💳 Card":"💳 Card → 💵 Cash"):(t.acct==="cash"?"💵 Cash":"💳 Card");
 function ask(msg){return new Promise(r=>{$("dmsg").textContent=msg;const d=$("dlg");d.showModal();$("dyes").onclick=()=>{d.close();r(true)};$("dno").onclick=()=>{d.close();r(false)};d.oncancel=()=>r(false)})}
 function render(){
  const b=balance(),spent=S.tx.filter(t=>t.type==="out").reduce((a,t)=>a+t.amount,0),inc=S.tx.filter(t=>t.type==="in").reduce((a,t)=>a+t.amount,0);
- $("bal").textContent=b==null?"—":eur(b);$("bal").className="bal"+(b<0?" neg":"");
+ $("bal").textContent=b==null?"—":eur(b);$("bal").className="bal"+(b<0?" neg":"");const B=accts();$("split").innerHTML=B?`<div><small>💳 Card</small><b>${eur(B.card)}</b></div><div><small>💵 Cash</small><b>${eur(B.cash)}</b></div>`:"";
  $("stats").innerHTML=b==null?"Set a starting balance to begin":`<span>Started <b>${eur(S.start)}</b></span><span>Spent <b>${eur(spent)}</b></span><span>Income <b>${eur(inc)}</b></span>`;
  $("startSum").textContent=S.start==null?"Set starting balance":"Change starting balance";
  // groups
  const tot=new Map(S.groups.map(g=>[g.id,0]));let ungrouped=0;
  S.tx.forEach(t=>{if(t.type!=="out")return;const g=groupOf(t);g?tot.set(g.id,tot.get(g.id)+t.amount):ungrouped+=t.amount});
- $("groups").innerHTML=S.groups.length?S.groups.map(g=>{const lim=(S.start||0)*g.pct/100,sp=tot.get(g.id),r=lim>0?sp/lim:(sp>0?1:0),cls=sp>lim+1e-9?"over":r>=.8?"warn":"";
+ $("groups").innerHTML=S.groups.length?S.groups.map(g=>{const lim=inc*g.pct/100,sp=tot.get(g.id),r=lim>0?sp/lim:0,cls=inc<=0?"":sp>lim+1e-9?"over":r>=.8?"warn":"";
   return `<div class="g ${cls}"><div class="t"><b>${esc(g.name)} <span class="sub">${+g.pct}%</span></b><span>${eur(sp)} / ${eur(lim)}</span></div><div class="bar"><i style="width:${Math.min(r,1)*100}%"></i></div>
-  <div class="b"><span>${cls==="over"?"Over by "+eur(sp-lim):Math.round(r*100)+"% used · "+eur(lim-sp)+" left"}</span><button class="lnk" data-rg="${g.id}">Remove</button></div>
+  <div class="b"><span>${inc<=0?"Log income to set this limit":cls==="over"?"Over by "+eur(sp-lim):Math.round(r*100)+"% used · "+eur(lim-sp)+" left"}</span><button class="lnk" data-rg="${g.id}">Remove</button></div>
   <div class="cats">${g.cats.map(c=>CATS[c][1]+" "+CATS[c][0]).join(" · ")||"Matches transactions named “"+esc(g.name)+"”"}</div></div>`}).join("")+(ungrouped?`<div class="sub">Not in any group: ${eur(ungrouped)}</div>`:""):
-  `<div class="empty">No groups yet. Groups cap spending as a % of your starting balance.</div><button id="quick">Quick setup: Needs 50% · Wants 30%</button>`;
- const pc=S.groups.reduce((a,g)=>a+g.pct,0);$("alloc").textContent=S.groups.length?`Allocated ${+pc.toFixed(2)}% of starting balance`+(S.start!=null?` (${eur(S.start*pc/100)})`:""):"";$("alloc").style.color=pc>100?"var(--red)":"";
+  `<div class="empty">No groups yet. Groups cap spending as a % of the income you log.</div><button id="quick">Quick setup: Needs 50% · Wants 30%</button>`;
+ const pc=S.groups.reduce((a,g)=>a+g.pct,0);$("alloc").textContent=S.groups.length?`Allocated ${+pc.toFixed(2)}% of income`+(inc>0?` (${eur(inc*pc/100)} so far)`:""):"";$("alloc").style.color=pc>100?"var(--red)":"";
  // breakdown
  const ct={};S.tx.forEach(t=>{if(t.type==="out")ct[t.cat]=(ct[t.cat]||0)+t.amount});const rows=Object.entries(ct).sort((a,c)=>c[1]-a[1]);
  if(!rows.length)$("breakdown").innerHTML='<div class="empty">Nothing spent yet.</div>';else{let acc=0;const stops=rows.map(([k,v])=>{const s=acc/spent*100;acc+=v;return `${CATS[k][2]} ${s}% ${acc/spent*100}%`}).join(",");
   $("breakdown").innerHTML=`<div class="donutrow"><div class="donut" style="background:conic-gradient(${stops})"></div><div class="leg">${rows.map(([k,v])=>`<div><span><i style="background:${CATS[k][2]}"></i>${CATS[k][0]}</span><b>${eur(v)} <span class="sub">${Math.round(v/spent*100)}%</span></b></div>`).join("")}</div></div>`}
  // list
  const opts=Object.entries(CATS).filter(([k])=>k!=="income").map(([k,v])=>[k,v[0]]);
- $("list").innerHTML=S.tx.length?[...S.tx].reverse().map(t=>{const g=groupOf(t),c=CATS[t.cat]||CATS.other;
-  return `<div class="tx"><div class="ic">${c[1]}</div><div class="m"><div class="d">${esc(t.desc||c[0])}</div><div class="s">${t.type==="out"?`<select data-c="${t.id}">${opts.map(([k,n])=>`<option value="${k}"${k===t.cat?" selected":""}>${n}</option>`).join("")}</select>`:"Income"}${g?`<span>→ ${esc(g.name)}</span>`:""}<span>${new Date(t.ts).toLocaleDateString("en-GB",{day:"numeric",month:"short"})}</span></div></div>
-  <div class="a ${t.type==="in"?"in":""}">${t.type==="in"?"+":"-"}${eur(t.amount)}</div><button class="lnk" data-rt="${t.id}" title="Revert">✕</button></div>`}).join(""):'<div class="empty">No transactions yet.</div>';
+ $("list").innerHTML=S.tx.length?[...S.tx].reverse().map(t=>{const g=groupOf(t),c=t.type==="tr"?["Transfer","🔁"]:(CATS[t.cat]||CATS.other);
+  return `<div class="tx"><div class="ic">${c[1]}</div><div class="m"><div class="d">${esc(t.desc||c[0])}</div><div class="s">${t.type==="out"?`<select data-c="${t.id}">${opts.map(([k,n])=>`<option value="${k}"${k===t.cat?" selected":""}>${n}</option>`).join("")}</select>`:t.type==="in"?"Income":"Transfer"}<span>${acl(t)}</span>${g?`<span>→ ${esc(g.name)}</span>`:""}<span>${new Date(t.ts).toLocaleDateString("en-GB",{day:"numeric",month:"short"})}</span></div></div>
+  <div class="a ${t.type==="in"?"in":""}">${t.type==="in"?"+":t.type==="out"?"-":""}${eur(t.amount)}</div><button class="lnk" data-rt="${t.id}" title="Revert">✕</button></div>`}).join(""):'<div class="empty">No transactions yet.</div>';
  const cs=$("cat"),cur=cs.value;cs.innerHTML=Object.entries(CATS).filter(([k])=>type==="in"?k==="income":k!=="income").map(([k,v])=>`<option value="${k}">${v[1]} ${v[0]}</option>`).join("");if(cs.querySelector(`[value="${cur}"]`))cs.value=cur;
  $("gcats").innerHTML=Object.entries(CATS).filter(([k])=>k!=="income").map(([k,v])=>`<button class="chip" data-gc="${k}">${v[1]} ${v[0]}</button>`).join("")}
 // ---------- events ----------
-function hint(){const d=$("desc").value;if(!catTouched){$("cat").value=guess(d,type)}const g=groupOf({type,desc:d.trim(),cat:$("cat").value});$("hint").textContent=d.trim()||$("amt").value?(catTouched?"":"Auto-categorized · ")+(type==="out"&&g?"counts toward “"+g.name+"”":""):""}
+function hint(){if(type==="tr"){$("hint").textContent="";return}const d=$("desc").value;if(!catTouched){$("cat").value=guess(d,type)}const g=groupOf({type,desc:d.trim(),cat:$("cat").value});$("hint").textContent=d.trim()||$("amt").value?(catTouched?"":"Auto-categorized · ")+(type==="out"&&g?"counts toward “"+g.name+"”":""):""}
 $("desc").oninput=hint;$("cat").onchange=()=>{catTouched=true;hint()};
-function mode(t){type=t;$("mx").className=t==="out"?"on":"";$("mi").className=t==="in"?"on":"";$("add").textContent=t==="out"?"Add expense":"Add income";catTouched=false;render();$("cat").value=guess($("desc").value,t);hint()}
+function mode(t){type=t;$("mx").className=t==="out"?"on":"";$("mi").className=t==="in"?"on":"";$("mt").className=t==="tr"?"on":"";$("add").textContent={out:"Add expense",in:"Add income",tr:"Move money"}[t];
+ $("acl").textContent=t==="out"?"Paid with":t==="in"?"Received in":"Direction";$("acct").innerHTML=t==="tr"?'<option value="card">💳 Card → 💵 Cash</option><option value="cash">💵 Cash → 💳 Card</option>':'<option value="card">💳 Card</option><option value="cash">💵 Cash</option>';
+ $("cat").parentElement.style.display=t==="tr"?"none":"";catTouched=false;render();if(t!=="tr")$("cat").value=guess($("desc").value,t);hint()}
+$("mt").onclick=()=>mode("tr");
 $("mx").onclick=()=>mode("out");$("mi").onclick=()=>mode("in");
 function add(){if(S.start==null){alert("Set a starting balance first.");$("start").focus();return}const a=num($("amt").value);if(!(a>0)){alert("Enter an amount greater than 0.");return}
- const d=$("desc").value.trim();S.tx.push({id:uid(),type,amount:a,desc:d,cat:$("cat").value,ts:Date.now()});$("amt").value=$("desc").value="";catTouched=false;save();render();hint();$("amt").focus()}
+ const d=$("desc").value.trim();S.tx.push({id:uid(),type,amount:a,desc:d,cat:type==="tr"?"other":$("cat").value,acct:$("acct").value,ts:Date.now()});$("amt").value=$("desc").value="";catTouched=false;save();render();hint();$("amt").focus()}
 $("add").onclick=add;[$("amt"),$("desc")].forEach(e=>e.onkeydown=ev=>{if(ev.key==="Enter")add()});
-$("setStart").onclick=async()=>{const v=num($("start").value);if(isNaN(v)){alert("Enter a valid number.");return}if(S.tx.length&&!(await ask("Changing the starting balance keeps your transactions but recalculates the balance and group limits. Continue?")))return;S.start=v;save();render();$("start").value=""};
+$("setStart").onclick=async()=>{const a=num($("startCard").value||0),c=num($("startCash").value||0);if(isNaN(a)||isNaN(c)){alert("Enter valid numbers.");return}
+ if(S.tx.length&&!(await ask("Changing the starting balances keeps your transactions but recalculates your card and cash totals. Continue?")))return;S.startCard=a;S.startCash=c;S.start=a+c;save();render();$("startCard").value=$("startCash").value=""};
 $("gadd").onclick=()=>{const n=$("gname").value.trim(),p=num($("gpct").value);if(S.start==null){alert("Set a starting balance first.");return}if(!n||!(p>0)){alert("Give the group a name and a percentage above 0.");return}if(S.groups.some(g=>keyOf(g.name)===keyOf(n))){alert("A group with that name exists.");return}
  S.groups.push({id:uid(),name:n,pct:p,cats:[...document.querySelectorAll("#gcats .on")].map(e=>e.dataset.gc)});$("gname").value=$("gpct").value="";$("gform").open=false;save();render()};
 document.addEventListener("click",async e=>{const t=e.target.closest("button");if(!t)return;
@@ -163,7 +171,7 @@ $("file").onchange=async e=>{const f=e.target.files[0];e.target.value="";if(!f)r
  const d=$("idlg");d.showModal();
  const pick=await new Promise(r=>{$("irep").onclick=()=>{d.close();r("r")};$("imer").onclick=()=>{d.close();r("m")};$("ino").onclick=()=>{d.close();r(0)};d.oncancel=()=>r(0)});
  if(!pick)return;
- if(pick==="r"){S=o}else{const ti=new Set(S.tx.map(t=>t.id)),gi=new Set(S.groups.map(g=>g.id));o.tx.forEach(t=>ti.has(t.id)||S.tx.push(t));o.groups.forEach(g=>gi.has(g.id)||S.groups.push(g));S.tx.sort((a,b)=>a.ts-b.ts);if(S.start==null)S.start=o.start}
+ if(pick==="r"){S=o}else{const ti=new Set(S.tx.map(t=>t.id)),gi=new Set(S.groups.map(g=>g.id));o.tx.forEach(t=>ti.has(t.id)||S.tx.push(t));o.groups.forEach(g=>gi.has(g.id)||S.groups.push(g));S.tx.sort((a,b)=>a.ts-b.ts);if(S.start==null){S.start=o.start;S.startCash=o.startCash;S.startCard=o.startCard}}
  const keep=pick==="r"?o.rev:0;save();if(keep){S.rev=keep;try{localStorage.setItem(LS,JSON.stringify(S))}catch(x){}stamp()}render()};
 $("theme").onclick=()=>{const r=document.documentElement,d=getComputedStyle(r).colorScheme==="dark";r.dataset.theme=d?"light":"dark"};
 render();hint();
